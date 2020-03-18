@@ -8,7 +8,7 @@ def dateStr2DateNum(dateStr):
     dateNum = 719529 + diff
     return dateNum
 
-def getDayTradeData(stockCode, dateStr):
+def getAllDayTradeData(stockCode):
     dataFolder = '/Users/test/Documents/Project/StockV20190119/StockMatlab/TidyGTADataBase'
     filePath = dataFolder + '/' + stockCode + '.txt'
     allTradeData = pd.read_table(filePath, header=0, sep=' ')
@@ -18,6 +18,17 @@ def getDayTradeData(stockCode, dateStr):
         allTradeData.columns = ['stockCode', 'date', 'open', 'high', 'close', 'low', 'volume', 'amount', 'circulatingValue', 'value', 'circulatingEquity', 'Equity']
     else:
         allTradeData.columns = ['stockCode', 'date', 'open', 'high', 'close', 'low', 'volume', 'amount']
+    return allTradeData
+
+def getSectionTradeData(stockCode, beginDateStr, endDateStr):
+    allTradeData = getAllDayTradeData(stockCode)
+    tempSectionTradeData = allTradeData[allTradeData.iloc[:, 1] >= dateStr2DateNum(beginDateStr)]
+    sectionTradeData = tempSectionTradeData[tempSectionTradeData.iloc[:, 1] <= dateStr2DateNum(endDateStr)]
+    return sectionTradeData
+
+def getDayTradeData(stockCode, dateStr, allTradeData = pd.DataFrame()):
+    if allTradeData.empty:
+        allTradeData = getAllDayTradeData(stockCode)
     dateMatlabNum = dateStr2DateNum(dateStr)
     tradeData = allTradeData[allTradeData.iloc[:, 1] == dateMatlabNum]
     if tradeData.shape[0] > 1:
@@ -30,10 +41,12 @@ def getDayTradeData(stockCode, dateStr):
     return tradeData
 
 if __name__ == "__main__":
-    stockCode = '128034'
-    dateStr = '20180329'
+    stockCode = '399006'
+    dateStr = '20151225'
     a=getDayTradeData(stockCode, dateStr)
     print(a)
+    b=getSectionTradeData(stockCode, '20200106', '20200106')
+    print(b)
 #       stockCode    date   open   high  close    low     volume        amount  circulatingValue         value  circulatingEquity   Equity
 # 6853          1  737793  16.94  17.31  17.18  16.92  111619400  1.917621e+09      9.895680e+09  9.895680e+09            57600.0  57600.0
     

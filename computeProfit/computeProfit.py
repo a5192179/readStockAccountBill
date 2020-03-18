@@ -2,11 +2,15 @@ import xlrd
 import pandas as pd
 import datetime
 from getDayTradeData import getDayTradeData
-
-
+import sys
+sys.path.append(r'./component/time')
+import timeAndDate
+sys.path.append(r'./component/baseline')
+import baseline
+import numpy as np
 class Asset:
-    def __init__(self):
-        self.date = datetime.datetime(2014, 8, 6)
+    def __init__(self, initDate):
+        self.date = initDate
         self.hold = pd.DataFrame(columns = ['currentPrice', 'costPrice', 'amount', 'buyDate', 'fee'])#code 是 行名
         self.cash = 0 # 现金
         self.cashFund = 0 # 货币基金
@@ -18,7 +22,7 @@ class Asset:
         self.position = 0 #仓位 当天总结算的时候更新
 
     def copy(self):
-        newAsset = Asset()
+        newAsset = Asset(self.date)
         newAsset.date = self.date
         newAsset.hold = self.hold.copy(deep=True)
         newAsset.cash = self.cash
@@ -310,10 +314,33 @@ def updateNetAndReturnRate(allAsset):
         allAsset[-1].position = 0
     
 
-def endToday(allAsset):
+def endToday(allAsset, myStatistic, myYearRaise, baseline):
     allAsset[-1].updateStockAsset()
     allAsset[-1].updateNetAsset()
     updateNetAndReturnRate(allAsset)
+    thisDay = allAsset[-1].date.strftime("%Y%m%d")
+
+    baseline.updateNet(thisDay)
+    baseline.updateYearRaise(thisDay)
+
+    thisDay = allAsset[-1].date.strftime("%Y%m%d")
+    temp = pd.Series([allAsset[-1].net, allAsset[-1].position, allAsset[-1].netAsset], index=myStatistic.columns, name = thisDay)
+    myStatistic = myStatistic.append(temp)
+    if timeAndDate.isLastDayofThisYear(thisDay):
+        lastYear = timeAndDate.getLastYear(thisDay)
+        lastDayofLastYear = lastYear + '1231'
+        beginDateStr = allAsset[0].date.strftime("%Y%m%d")
+        if beginDateStr[0:4] == thisDay[0:4]:
+            yearBaseDay = beginDateStr
+        else:
+            yearBaseDay = lastDayofLastYear
+        baseDayNet = myStatistic.loc[yearBaseDay, 'net']
+        todayNet = myStatistic.loc[thisDay, 'net']
+        yearRaise = (todayNet - baseDayNet) / baseDayNet
+        yearRaiseSeries = pd.Series(yearRaise, index = [thisDay])
+        myYearRaise = myYearRaise.append(yearRaiseSeries)
+        print('myYearRaise, year:' + thisDay[0:4] + ', raise:' + str(yearRaise))
+    return myStatistic, myYearRaise, baseline
 
 def newDay(allAsset):
     oldAsset = allAsset[-1]
@@ -322,22 +349,28 @@ def newDay(allAsset):
     newAsset.todayIn = 0
     allAsset.append(newAsset)
 
-
 if __name__ == "__main__":
     # 读取数据
     tradeList = pd.read_excel('/Users/test/OneDrive/Project/Stock/Datum/40047552对账单/All.xlsx')
     # 生成一个初始asset list
     allAsset = []
-    asset = Asset()
+    initDate = datetime.datetime(2014, 8, 6) #这个是起始日期，开户第一天，有转账记录，但是没有实际金额
+    asset = Asset(initDate)
     allAsset.append(asset)
+    # 初始化基线统计参数，需要统计基线的净值、年度涨幅
+    baseCode = '399006'
+    baseline = baseline.Baseline(baseCode, initDate.strftime("%Y%m%d"))
+    # 初始化持仓统计参数，需要统计净值、仓位、年度涨幅
+    myStatistic = pd.DataFrame(data = np.array([1, 0, 0]).reshape(1, 3), columns = ['net', 'position', 'asset'], index = [initDate.strftime("%Y%m%d")]) # 行是日期
+    myYearRaise = pd.Series() # 行是年，每年最后第一个自然日的日期，列是年内涨幅
     # 新的一天开始
     print(tradeList.shape[0] - 1)
     for dayNum in range(tradeList.shape[0] - 1):
         newDay(allAsset)
         today = allAsset[-1].date
         todayDateNum = int(today.strftime("%Y%m%d")) # 这里从对账单里面读出来的是int类型的，不是字符串，所以要转换一下
-        if todayDateNum == 20170102:
-            a=1
+        if todayDateNum == 20151231:
+            a = 1
         if todayDateNum == 20191206:
             break
         todayTradeOperateRecord = tradeList[tradeList.iloc[:, 0] == todayDateNum]
@@ -388,7 +421,7 @@ if __name__ == "__main__":
                 elif operateRecord.loc[tradeIndex, '业务标志'] == '新股申购确认缴款':
                     payForIPOSubscriptionConfirmation(allAsset[-1], operateRecord)
         # 统计
-        endToday(allAsset)
+        myStatistic, myYearRaise, baseline = endToday(allAsset, myStatistic, myYearRaise, baseline)
         # print(allAsset[-1].date.strftime("%Y-%m-%d") + ' cash:' + str(allAsset[-1].cash))
         print(str(dayNum) + ' ' + allAsset[-1].date.strftime("%Y-%m-%d") + \
             ' net:' + str(round(allAsset[-1].net, 2)) + \
